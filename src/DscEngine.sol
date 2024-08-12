@@ -4,6 +4,7 @@ pragma solidity ^0.8.18;
 import {DecentrailizedStableCoin} from "./DecentrailizedStableCoin.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 contract DscEngine is ReentrancyGuard {
     ///////////////////
@@ -24,7 +25,12 @@ contract DscEngine is ReentrancyGuard {
     ///////////////////
     DecentrailizedStableCoin private immutable i_dsc;
 
+    uint256 private constant LIQUIDATION_THRESHOLD = 50;
+    uint256 private constant LIQUIDATION_PRECISION = 100; // means you need to be 200% over-collateralized
     uint256 private constant MIN_HEALTH_FACTOR = 1e18;
+    uint256 private constant ADDITIONAL_FEED_PRECISION = 1e10;
+    uint256 private constant PRECISION = 1e18;
+    uint256 private constant FEED_PRECISION = 1e8;
 
     //@dev Mapping of token address to price feed address
     mapping(address token => address priceFeed) private s_priceFeed;
@@ -148,9 +154,26 @@ contract DscEngine is ReentrancyGuard {
 
     function _calculateHealthFactor(uint256 _totalDscMinted, uint256 _collateralValueInUsd)
         private
-        view
+        pure
         returns (uint256)
-    {}
+    {
+        uint256 collateralAdjustedForThreshold = (_collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
+        return (collateralAdjustedForThreshold * PRECISION) / _totalDscMinted;
+    }
+
+    /**
+     * @notice Get the USD value of a token
+     * @param _tokenAddress address of the token to get the USD value (with 18 decimal places)
+     * @param _amount amount of the token in WEI
+     * @return uint256 USD value of the token
+     */
+    function _getUsdValue(address _tokenAddress, uint256 _amount) private view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeed[_tokenAddress]);
+        // Returned price has 8 decimal places
+        (, int256 price,,,) = priceFeed.latestRoundData();
+        // Return the price of WEI (1 ETH = 1e18 WEI), so adding 10 more decimal places
+        return (uint256(price) * ADDITIONAL_FEED_PRECISION * _amount) / PRECISION;
+    }
 
     ////////////////////////////////////////////////////////////////////////////
     // Public & External View & Pure Functions
@@ -163,6 +186,10 @@ contract DscEngine is ReentrancyGuard {
         return _calculateHealthFactor(_totalDscMinted, _collateralValueInUsd);
     }
 
+    /**
+     * @notice Get the total collateral value of a user in USD
+     * @param _user address of the user to get the collateral value
+     */
     function getAccountCollateralValue(address _user) public view returns (uint256 totalCollateralValueInUsd) {
         for (uint256 i = 0; i < s_collateralTokens.length; i++) {
             address tokenAddress = s_collateralTokens[i];
@@ -170,5 +197,9 @@ contract DscEngine is ReentrancyGuard {
             totalCollateralValueInUsd += _getUsdValue(tokenAddress, collateralAmount);
         }
         return totalCollateralValueInUsd;
+    }
+
+    function getUsdValue(address _tokenAddress, uint256 _amount) external view returns (uint256) {
+        return _getUsdValue(_tokenAddress, _amount);
     }
 }
