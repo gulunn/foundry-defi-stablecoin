@@ -102,6 +102,7 @@ contract DscEngine is ReentrancyGuard {
     function mintDsc(uint256 _amountDscToMint) public moreThanZero(_amountDscToMint) nonReentrant {
         s_dscMinted[msg.sender] += _amountDscToMint;
         _revertIfHealthFactorIsBrocken(msg.sender);
+        //TODO: recap the whole process of _revertIfHealthFactorIsBrocken(msg.sender) and start from here
     }
 
     /**
@@ -157,6 +158,7 @@ contract DscEngine is ReentrancyGuard {
         pure
         returns (uint256)
     {
+        if (_totalDscMinted == 0) return type(uint256).max;
         uint256 collateralAdjustedForThreshold = (_collateralValueInUsd * LIQUIDATION_THRESHOLD) / LIQUIDATION_PRECISION;
         return (collateralAdjustedForThreshold * PRECISION) / _totalDscMinted;
     }
@@ -180,7 +182,7 @@ contract DscEngine is ReentrancyGuard {
     ////////////////////////////////////////////////////////////////////////////
     function calculateHealthFactor(uint256 _totalDscMinted, uint256 _collateralValueInUsd)
         external
-        view
+        pure
         returns (uint256)
     {
         return _calculateHealthFactor(_totalDscMinted, _collateralValueInUsd);
