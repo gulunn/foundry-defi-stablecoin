@@ -7,9 +7,10 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 contract DscEngine is ReentrancyGuard {
-    ///////////////////
-    // Errors
-    ///////////////////
+    /////////////////////////////////////////////////////////
+    //                       Errors                        //
+    /////////////////////////////////////////////////////////
+
     error DscEngine__NeedsMoreThanZero();
     error DscEngine__TokenAddressesAndPriceFeedAddressesLengthMismatch();
     error DscEngine__TokenNotAllowed(address tokenAddress);
@@ -17,13 +18,14 @@ contract DscEngine is ReentrancyGuard {
     error DscEnging__BreakHealthFactor(uint256 healthFactorValue);
     error DscEnging__MintFailed();
 
-    ///////////////////
-    // Types
-    ///////////////////
+    /////////////////////////////////////////////////////////
+    //                       Types                         //
+    /////////////////////////////////////////////////////////
 
-    ///////////////////
-    // State Variables
-    ///////////////////
+    /////////////////////////////////////////////////////////
+    //                  State Variables                    //
+    /////////////////////////////////////////////////////////
+
     DecentrailizedStableCoin private immutable i_dsc;
 
     uint256 private constant LIQUIDATION_THRESHOLD = 50;
@@ -41,15 +43,17 @@ contract DscEngine is ReentrancyGuard {
     mapping(address user => uint256 dscMinted) private s_dscMinted;
     //@dev If we know how many collateral tokens are available, we could make this immutable
     address[] private s_collateralTokens;
-    ///////////////////
-    // Events
-    ///////////////////
+
+    /////////////////////////////////////////////////////////
+    //                      Events                         //
+    /////////////////////////////////////////////////////////
 
     event CollateralDeposited(address indexed user, address indexed collateralToken, uint256 indexed amount);
 
-    ///////////////////
-    // Modifiers
-    ///////////////////
+    /////////////////////////////////////////////////////////
+    //                     Modifiers                       //
+    /////////////////////////////////////////////////////////
+
     modifier moreThanZero(uint256 _amount) {
         if (_amount <= 0) {
             revert DscEngine__NeedsMoreThanZero();
@@ -64,9 +68,10 @@ contract DscEngine is ReentrancyGuard {
         _;
     }
 
-    ///////////////////
-    // Functions
-    ///////////////////
+    /////////////////////////////////////////////////////////
+    //                    Functions                        //
+    /////////////////////////////////////////////////////////
+
     constructor(address[] memory _tokenAddresses, address[] memory _priceFeedAddresses, address _dscAddress) {
         if (_tokenAddresses.length != _priceFeedAddresses.length) {
             revert DscEngine__TokenAddressesAndPriceFeedAddressesLengthMismatch();
@@ -78,9 +83,10 @@ contract DscEngine is ReentrancyGuard {
         i_dsc = DecentrailizedStableCoin(_dscAddress);
     }
 
-    ///////////////////////
-    // External Functions
-    ///////////////////////
+    /////////////////////////////////////////////////////////
+    //                External Functions                   //
+    /////////////////////////////////////////////////////////
+
     function depositCollateralAndMintDsc(
         address _tokenCollateralAddress,
         uint256 _amountCollateral,
@@ -98,9 +104,9 @@ contract DscEngine is ReentrancyGuard {
 
     function liquidate() external {}
 
-    ///////////////////////
-    // Public Functions
-    ///////////////////////
+    /////////////////////////////////////////////////////////
+    //                  Public Functions                   //
+    /////////////////////////////////////////////////////////
 
     /**
      * @notice You can mint DSC if you have enough collateral deposited
@@ -136,13 +142,14 @@ contract DscEngine is ReentrancyGuard {
         }
     }
 
-    ///////////////////////
-    // Private Functions
-    ///////////////////////
+    /////////////////////////////////////////////////////////
+    //                 Private Functions                   //
+    /////////////////////////////////////////////////////////
 
     ////////////////////////////////////////////////////////////////////////////
-    // Private & Internal View & Pure Functions
+    //             Private & Internal View & Pure Functions                   //
     ////////////////////////////////////////////////////////////////////////////
+
     function _revertIfHealthFactorIsBrocken(address _user) internal view {
         uint256 userHealthFactor = _getHealthFactor(_user);
         if (userHealthFactor < MIN_HEALTH_FACTOR) {
@@ -194,8 +201,9 @@ contract DscEngine is ReentrancyGuard {
     }
 
     ////////////////////////////////////////////////////////////////////////////
-    // Public & External View & Pure Functions
+    //              Public & External View & Pure Functions                   //
     ////////////////////////////////////////////////////////////////////////////
+
     function calculateHealthFactor(uint256 _totalDscMinted, uint256 _collateralValueInUsd)
         external
         pure
