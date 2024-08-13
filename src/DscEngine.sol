@@ -12,9 +12,10 @@ contract DscEngine is ReentrancyGuard {
     ///////////////////
     error DscEngine__NeedsMoreThanZero();
     error DscEngine__TokenAddressesAndPriceFeedAddressesLengthMismatch();
-    error DscEngine__TokenNotAllowed();
+    error DscEngine__TokenNotAllowed(address tokenAddress);
     error DscEngine__TransferFailed();
-    error DscEnging__BreakHealthFactor();
+    error DscEnging__BreakHealthFactor(uint256 healthFactorValue);
+    error DscEnging__MintFailed();
 
     ///////////////////
     // Types
@@ -58,7 +59,7 @@ contract DscEngine is ReentrancyGuard {
 
     modifier isAllowedToken(address _tokenAddress) {
         if (s_priceFeed[_tokenAddress] == address(0)) {
-            revert DscEngine__TokenNotAllowed();
+            revert DscEngine__TokenNotAllowed(_tokenAddress);
         }
         _;
     }
@@ -80,7 +81,14 @@ contract DscEngine is ReentrancyGuard {
     ///////////////////////
     // External Functions
     ///////////////////////
-    function depositCollateralAndMintDsc() external {}
+    function depositCollateralAndMintDsc(
+        address _tokenCollateralAddress,
+        uint256 _amountCollateral,
+        uint256 _amountDscToMint
+    ) external {
+        depositCollateral(_tokenCollateralAddress, _amountCollateral);
+        mintDsc(_amountDscToMint);
+    }
 
     function redeemCollateralForDsc() external {}
 
@@ -102,7 +110,10 @@ contract DscEngine is ReentrancyGuard {
     function mintDsc(uint256 _amountDscToMint) public moreThanZero(_amountDscToMint) nonReentrant {
         s_dscMinted[msg.sender] += _amountDscToMint;
         _revertIfHealthFactorIsBrocken(msg.sender);
-        //TODO: recap the whole process of _revertIfHealthFactorIsBrocken(msg.sender) and start from here
+        bool isMinted = i_dsc.mint(msg.sender, _amountDscToMint);
+        if (!isMinted) {
+            revert DscEnging__MintFailed();
+        }
     }
 
     /**
@@ -135,7 +146,7 @@ contract DscEngine is ReentrancyGuard {
     function _revertIfHealthFactorIsBrocken(address _user) internal view {
         uint256 userHealthFactor = _getHealthFactor(_user);
         if (userHealthFactor < MIN_HEALTH_FACTOR) {
-            revert DscEnging__BreakHealthFactor();
+            revert DscEnging__BreakHealthFactor(userHealthFactor);
         }
     }
 
@@ -153,6 +164,11 @@ contract DscEngine is ReentrancyGuard {
         collateralValueInUsd = getAccountCollateralValue(_user);
     }
 
+    /**
+     * @notice healthFactor = (1/2 collateralValue) / DscMinted => 200% over-collateral
+     * @param _totalDscMinted total DSC minted by a user in WEI
+     * @param _collateralValueInUsd USD value of a user's collateral in WEI
+     */
     function _calculateHealthFactor(uint256 _totalDscMinted, uint256 _collateralValueInUsd)
         private
         pure
@@ -165,9 +181,9 @@ contract DscEngine is ReentrancyGuard {
 
     /**
      * @notice Get the USD value of a token
-     * @param _tokenAddress address of the token to get the USD value (with 18 decimal places)
+     * @param _tokenAddress address of the token to get the USD value
      * @param _amount amount of the token in WEI
-     * @return uint256 USD value of the token
+     * @return uint256 USD value of the token (with 18 decimal places)
      */
     function _getUsdValue(address _tokenAddress, uint256 _amount) private view returns (uint256) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeed[_tokenAddress]);
