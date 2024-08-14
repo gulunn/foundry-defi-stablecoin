@@ -49,6 +49,7 @@ contract DscEngine is ReentrancyGuard {
     /////////////////////////////////////////////////////////
 
     event CollateralDeposited(address indexed user, address indexed collateralToken, uint256 indexed amount);
+    event CollateralRedeemed(address indexed redeemedTo, address indexed collateralToken, uint256 indexed amount);
 
     /////////////////////////////////////////////////////////
     //                     Modifiers                       //
@@ -96,11 +97,46 @@ contract DscEngine is ReentrancyGuard {
         mintDsc(_amountDscToMint);
     }
 
-    function redeemCollateralForDsc() external {}
+    /**
+     * @notice This function will withdraw your collateral and burn DSC in one transaction
+     * @param _tokenCollateralAddress : The ERC20 token address of the collateral you're depositing
+     * @param _amountCollateral : The amount of collateral you're depositing
+     * @param _amountDscToBurn : The amount of DSC you want to burn
+     */
+    function redeemCollateralForDsc(
+        address _tokenCollateralAddress,
+        uint256 _amountCollateral,
+        uint256 _amountDscToBurn
+    ) external {
+        _burnDsc(_amountDscToBurn);
+        _redeemCollateral(_tokenCollateralAddress, _amountCollateral, msg.sender);
+        _revertIfHealthFactorIsBrocken(msg.sender);
+    }
 
-    function redeemCollateral() external {}
+    /**
+     * @notice Redeems collateral
+     * @param _tokenCollateralAddress The address of the collateral token
+     * @param _amountCollateral The amount of collateral to redeem
+     */
+    function redeemCollateral(address _tokenCollateralAddress, uint256 _amountCollateral)
+        external
+        moreThanZero(_amountCollateral)
+        nonReentrant
+        isAllowedToken(_tokenCollateralAddress)
+    {
+        _redeemCollateral(_tokenCollateralAddress, _amountCollateral, msg.sender);
+        _revertIfHealthFactorIsBrocken(msg.sender);
+    }
 
-    function burnDsc() external {}
+    /**
+     * @notice careful! You'll burn your DSC here! Make sure you want to do this...
+     * @dev you might want to use this if you're nervous you might get liquidated
+     *      and ant to just burn your DSC to keep your collateral
+     * @param _amountDsc The amount of DSC to burn
+     */
+    function burnDsc(uint256 _amountDsc) external moreThanZero(_amountDsc) nonReentrant {
+        _burnDsc(_amountDsc);
+    }
 
     function liquidate() external {}
 
@@ -145,6 +181,26 @@ contract DscEngine is ReentrancyGuard {
     /////////////////////////////////////////////////////////
     //                 Private Functions                   //
     /////////////////////////////////////////////////////////
+
+    function _redeemCollateral(address _tokenCollateralAddress, uint256 _amountCollateral, address to) private {
+        s_collateralDeposited[to][_tokenCollateralAddress] -= _amountCollateral;
+        emit CollateralRedeemed(to, _tokenCollateralAddress, _amountCollateral);
+        // transfer
+        bool success = IERC20(_tokenCollateralAddress).transfer(to, _amountCollateral);
+        if (!success) {
+            revert DscEngine__TransferFailed();
+        }
+    }
+
+    function _burnDsc(uint256 _amountDscToBurn) private {
+        s_dscMinted[msg.sender] -= _amountDscToBurn;
+        // transfer DSC to contract first
+        bool success = i_dsc.transferFrom(msg.sender, address(0), _amountDscToBurn);
+        if (!success) {
+            revert DscEngine__TransferFailed();
+        }
+        i_dsc.burn(_amountDscToBurn);
+    }
 
     ////////////////////////////////////////////////////////////////////////////
     //             Private & Internal View & Pure Functions                   //

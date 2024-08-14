@@ -23,8 +23,8 @@ contract DscEngineTest is Test {
     uint256 amountToMint = 100 ether;
     address public user = makeAddr("USER");
 
-    uint256 public constant STARTING_USER_BALANCE = 10 ether;
-    uint256 public constant AMOUNT_COLLATERAL = 10 ether;
+    uint256 public constant STARTING_USER_BALANCE = 100 ether;
+    uint256 public constant AMOUNT_COLLATERAL = 1 ether;
 
     function setUp() public {
         deployer = new DeployDsc();
@@ -76,6 +76,18 @@ contract DscEngineTest is Test {
     /////////////////////////////////////////////////////////
     //               redeemCollateral Tests                //
     /////////////////////////////////////////////////////////
+
+    function testCollateralDepositedCantBelowZero() public {
+        vm.startPrank(user);
+        console.log("user weth balance: ", ERC20Mock(weth).balanceOf(user));
+        ERC20Mock(weth).approve(address(dscEngine), AMOUNT_COLLATERAL);
+        dscEngine.depositCollateral(weth, AMOUNT_COLLATERAL);
+        console.log("collateral deposited");
+        vm.expectRevert();
+        vm.expectRevert();
+        dscEngine.redeemCollateral(weth, AMOUNT_COLLATERAL + 1);
+        vm.stopPrank();
+    }
 
     /////////////////////////////////////////////////////////
     //            redeemCollateralForDsc Tests             //
