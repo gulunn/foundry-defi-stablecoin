@@ -218,6 +218,29 @@ contract DscEngineTest is Test {
     //                    burnDsc Tests                    //
     /////////////////////////////////////////////////////////
 
+    function testRevertsIfBurnAmountIsZero() public {
+        vm.startPrank(user);
+        // moreThanZero modifier happens before the burnDsc function, so we don't need to deposit and mint first
+        vm.expectRevert(DscEngine.DscEngine__NeedsMoreThanZero.selector);
+        dscEngine.burnDsc(0);
+        vm.stopPrank();
+    }
+
+    function testCantBurnMoreThanBalance() public {
+        vm.startPrank(user);
+        vm.expectRevert();
+        dscEngine.burnDsc(1);
+    }
+
+    function testCanBurnDsc() public depositCollateralAndMintDsc {
+        vm.startPrank(user);
+        dsc.approve(address(dscEngine), amountToMint);
+        dscEngine.burnDsc(amountToMint);
+        vm.stopPrank();
+        uint256 userDscBalance = dsc.balanceOf(user);
+        assertEq(userDscBalance, 0);
+    }
+
     /////////////////////////////////////////////////////////
     //               redeemCollateral Tests                //
     /////////////////////////////////////////////////////////
