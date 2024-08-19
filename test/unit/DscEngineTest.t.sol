@@ -97,7 +97,7 @@ contract DscEngineTest is Test {
         mockDsc.mint(user, AMOUNT_COLLATERAL);
 
         vm.prank(owner);
-        mockDsc.transferOwnership(address(mockDsce)); // Make DscEngine the owner of the Dsc contract
+        mockDsc.transferOwnership(address(mockDsce)); // Make mockDscEngine the owner of the mockDsc contract
         // Arrange - User
         vm.startPrank(user);
         ERC20Mock(address(mockDsc)).approve(address(mockDsce), AMOUNT_COLLATERAL);
@@ -165,6 +165,54 @@ contract DscEngineTest is Test {
     /////////////////////////////////////////////////////////
     //                    mintDsc Tests                    //
     /////////////////////////////////////////////////////////
+
+    function testRevertsIfMintFails() public {
+        // Need a mocked dsc contract to make mint failed
+        MockFailedMintDsc mockDsc = new MockFailedMintDsc();
+        address owner = address(this);
+        tokenAddresses = [weth];
+        priceFeedAddresses = [wethUsdPriceFeed];
+        // Make mockDscEngine the owner of the mockDsc contract
+        vm.startPrank(owner);
+        DscEngine mockDscEngine = new DscEngine(tokenAddresses, priceFeedAddresses, address(mockDsc));
+        mockDsc.transferOwnership(address(mockDscEngine));
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        ERC20Mock(weth).approve(address(mockDscEngine), AMOUNT_COLLATERAL);
+        vm.expectRevert(DscEngine.DscEnging__MintFailed.selector);
+        mockDscEngine.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, amountToMint);
+        vm.stopPrank();
+    }
+
+    function testRevertsIfMintAmountIsZero() public {
+        vm.startPrank(user);
+        ERC20Mock(weth).approve(address(dscEngine), AMOUNT_COLLATERAL);
+        dscEngine.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, amountToMint);
+        vm.expectRevert(DscEngine.DscEngine__NeedsMoreThanZero.selector);
+        dscEngine.mintDsc(0);
+        vm.stopPrank();
+    }
+
+    function testRevertsIfMintAmountBreaksHealthFactor() public {
+        //Let mint value = collateral value, which breaks health factor
+        amountToMint = dscEngine.getUsdValue(weth, AMOUNT_COLLATERAL);
+        // equals 0.5e18, 50% undercollateralized (because the threshold is twice the collateral value)
+        uint256 expectedHealthFactor = dscEngine.calculateHealthFactor(amountToMint, amountToMint);
+
+        vm.startPrank(user);
+        ERC20Mock(weth).approve(address(dscEngine), AMOUNT_COLLATERAL);
+        vm.expectRevert(abi.encodeWithSelector(DscEngine.DscEnging__BreakHealthFactor.selector, expectedHealthFactor));
+        dscEngine.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, amountToMint);
+        vm.stopPrank();
+    }
+
+    function testCanMintDsc() public collateralDeposited {
+        vm.startPrank(user);
+        dscEngine.mintDsc(amountToMint);
+        uint256 userDscBalance = dsc.balanceOf(user);
+        assertEq(userDscBalance, amountToMint);
+    }
 
     /////////////////////////////////////////////////////////
     //                    burnDsc Tests                    //
