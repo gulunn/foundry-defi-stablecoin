@@ -360,4 +360,12 @@ contract DscEngine is ReentrancyGuard {
 
         return (_usdValueInWei * PRECISION) / (uint256(price) * ADDITIONAL_FEED_PRECISION);
     }
+
+    function getAccountInformation(address _user)
+        external
+        view
+        returns (uint256 totalDscMinted, uint256 collateralValueInUsd)
+    {
+        return _getAccountInformation(_user);
+    }
 }
