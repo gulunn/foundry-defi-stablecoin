@@ -17,6 +17,8 @@ contract DscEngine is ReentrancyGuard {
     error DscEngine__TransferFailed();
     error DscEnging__BreakHealthFactor(uint256 healthFactorValue);
     error DscEnging__MintFailed();
+    error DscEngine__Liquidate__HelthFactorOK(uint256 healthFactorValue);
+    error DscEngine_HealthFactorNotImproved();
 
     /////////////////////////////////////////////////////////
     //                       Types                         //
@@ -29,6 +31,7 @@ contract DscEngine is ReentrancyGuard {
     DecentrailizedStableCoin private immutable i_dsc;
 
     uint256 private constant LIQUIDATION_THRESHOLD = 50;
+    uint256 private constant LIQUIDATION_BONUS = 10;
     uint256 private constant LIQUIDATION_PRECISION = 100; // means you need to be 200% over-collateralized
     uint256 private constant MIN_HEALTH_FACTOR = 1e18;
     uint256 private constant ADDITIONAL_FEED_PRECISION = 1e10;
@@ -49,7 +52,9 @@ contract DscEngine is ReentrancyGuard {
     /////////////////////////////////////////////////////////
 
     event CollateralDeposited(address indexed user, address indexed collateralToken, uint256 indexed amount);
-    event CollateralRedeemed(address indexed redeemedTo, address indexed collateralToken, uint256 indexed amount);
+    event CollateralRedeemed(
+        address indexed redeemedFrom, address indexed redeemedTo, address indexed collateralToken, uint256 amount
+    );
 
     /////////////////////////////////////////////////////////
     //                     Modifiers                       //
@@ -103,13 +108,13 @@ contract DscEngine is ReentrancyGuard {
      * @param _amountCollateral : The amount of collateral you're depositing
      * @param _amountDscToBurn : The amount of DSC you want to burn
      */
-    function redeemCollateralForDsc(
+    function redeemCollateralAndBurnDsc(
         address _tokenCollateralAddress,
         uint256 _amountCollateral,
         uint256 _amountDscToBurn
     ) external {
-        _burnDsc(_amountDscToBurn);
-        _redeemCollateral(_tokenCollateralAddress, _amountCollateral, msg.sender);
+        _burnDsc(_amountDscToBurn, msg.sender, msg.sender);
+        _redeemCollateral(msg.sender, msg.sender, _tokenCollateralAddress, _amountCollateral);
         _revertIfHealthFactorIsBrocken(msg.sender);
     }
 
@@ -124,7 +129,7 @@ contract DscEngine is ReentrancyGuard {
         nonReentrant
         isAllowedToken(_tokenCollateralAddress)
     {
-        _redeemCollateral(_tokenCollateralAddress, _amountCollateral, msg.sender);
+        _redeemCollateral(msg.sender, msg.sender, _tokenCollateralAddress, _amountCollateral);
         _revertIfHealthFactorIsBrocken(msg.sender);
     }
 
@@ -135,10 +140,47 @@ contract DscEngine is ReentrancyGuard {
      * @param _amountDsc The amount of DSC to burn
      */
     function burnDsc(uint256 _amountDsc) external moreThanZero(_amountDsc) nonReentrant {
-        _burnDsc(_amountDsc);
+        _burnDsc(_amountDsc, msg.sender, msg.sender);
     }
 
-    function liquidate() external {}
+    /**
+     * @notice this function allowes a user to liquidate another user who's undercollateralized
+     *         and receives a 10% liquidation bonus of the collateral value being liquidated
+     * @param _collateralTokenAddress the address of the collateral token that will be liquidated
+     * @param _userUndercollateralized the address of the user who's undercollateralized
+     * @param _DscDebtTocover the amount of DSC debt that will be covered by the liquidation
+     *        (You can partially liquidate a user by specifying a smaller amount than their total debt)
+     */
+    function liquidate(address _collateralTokenAddress, address _userUndercollateralized, uint256 _DscDebtTocover)
+        external
+        moreThanZero(_DscDebtTocover)
+        nonReentrant
+    {
+        // Check if the user being liquidated is actually undercollateralized
+        uint256 startingHealthFactor = _getHealthFactor(_userUndercollateralized);
+        if (startingHealthFactor > MIN_HEALTH_FACTOR) {
+            revert DscEngine__Liquidate__HelthFactorOK(startingHealthFactor);
+        }
+
+        // Calculate the amount of collateral that will be liquidated, which equals _DscDebtTocover in USD value
+        uint256 collateralAmountToLiquidate = getTokenAmountFromUsd(_collateralTokenAddress, _DscDebtTocover);
+        uint256 bonusCollateral = collateralAmountToLiquidate * LIQUIDATION_BONUS / LIQUIDATION_PRECISION;
+
+        // Redeem collateral from undercollateralized user to the liquidator
+        _redeemCollateral(
+            _userUndercollateralized, msg.sender, _collateralTokenAddress, collateralAmountToLiquidate + bonusCollateral
+        );
+        // Burn DSC from the liquidator and clean the debt from the undercollateralized user
+        _burnDsc(_DscDebtTocover, _userUndercollateralized, msg.sender);
+
+        // Check if the health factor of the undercollateralized user has improved
+        uint256 endingHealthFactor = _getHealthFactor(_userUndercollateralized);
+        if (endingHealthFactor <= startingHealthFactor) {
+            revert DscEngine_HealthFactorNotImproved();
+        }
+        // Make sure the liquidation process doesn't break the health factor of the liquidator
+        _revertIfHealthFactorIsBrocken(msg.sender);
+    }
 
     /////////////////////////////////////////////////////////
     //                  Public Functions                   //
@@ -182,20 +224,38 @@ contract DscEngine is ReentrancyGuard {
     //                 Private Functions                   //
     /////////////////////////////////////////////////////////
 
-    function _redeemCollateral(address _tokenCollateralAddress, uint256 _amountCollateral, address to) private {
-        s_collateralDeposited[to][_tokenCollateralAddress] -= _amountCollateral;
-        emit CollateralRedeemed(to, _tokenCollateralAddress, _amountCollateral);
+    /**
+     * @notice Redeem collateral from the DSC Engine
+     * @param redeemedFrom address of the account that it's deposited collateral will be redeemed
+     * @param redeemedTo address of the account that will receive the collateral
+     * @param _tokenCollateralAddress address of the collateral token
+     * @param _amountCollateral amount of collateral to be redeemed
+     */
+    function _redeemCollateral(
+        address redeemedFrom,
+        address redeemedTo,
+        address _tokenCollateralAddress,
+        uint256 _amountCollateral
+    ) private {
+        s_collateralDeposited[redeemedFrom][_tokenCollateralAddress] -= _amountCollateral;
+        emit CollateralRedeemed(redeemedFrom, redeemedTo, _tokenCollateralAddress, _amountCollateral);
         // transfer
-        bool success = IERC20(_tokenCollateralAddress).transfer(to, _amountCollateral);
+        bool success = IERC20(_tokenCollateralAddress).transfer(redeemedTo, _amountCollateral);
         if (!success) {
             revert DscEngine__TransferFailed();
         }
     }
 
-    function _burnDsc(uint256 _amountDscToBurn) private {
-        s_dscMinted[msg.sender] -= _amountDscToBurn;
+    /**
+     * @notice Burn DSC from the DSC Engine
+     * @param _amountDscToBurn amount of DSC to be burned
+     * @param onBehalfOf address of the account that's gonna reduce the dsc debt from s_dscMinted[]
+     * @param dscFrom address of the account that will actually burn the DSC
+     */
+    function _burnDsc(uint256 _amountDscToBurn, address onBehalfOf, address dscFrom) private {
+        s_dscMinted[onBehalfOf] -= _amountDscToBurn;
         // transfer DSC to contract first
-        bool success = i_dsc.transferFrom(msg.sender, address(0), _amountDscToBurn);
+        bool success = i_dsc.transferFrom(dscFrom, address(this), _amountDscToBurn);
         if (!success) {
             revert DscEngine__TransferFailed();
         }
@@ -283,5 +343,21 @@ contract DscEngine is ReentrancyGuard {
 
     function getUsdValue(address _tokenAddress, uint256 _amount) external view returns (uint256) {
         return _getUsdValue(_tokenAddress, _amount);
+    }
+
+    /**
+     * @notice This function calculates the amount of a specific token equivalent to a given USD value.
+     * @param _tokenAddress: The ERC20 token address whose equivalent amount is to be calculated.
+     * @param _usdValueInWei: The amount of USD (in Wei) that needs to be converted to the equivalent token amount.
+     * @return The amount of the token that corresponds to the given USD value, taking into account the token's price.
+     */
+    function getTokenAmountFromUsd(address _tokenAddress, uint256 _usdValueInWei) public view returns (uint256) {
+        AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeed[_tokenAddress]);
+        if (address(priceFeed) == address(0)) {
+            revert DscEngine__TokenNotAllowed(_tokenAddress);
+        }
+        (, int256 price,,,) = priceFeed.latestRoundData();
+
+        return (_usdValueInWei * PRECISION) / (uint256(price) * ADDITIONAL_FEED_PRECISION);
     }
 }
