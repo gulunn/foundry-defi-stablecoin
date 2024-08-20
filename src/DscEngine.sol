@@ -112,7 +112,7 @@ contract DscEngine is ReentrancyGuard {
         address _tokenCollateralAddress,
         uint256 _amountCollateral,
         uint256 _amountDscToBurn
-    ) external {
+    ) external moreThanZero(_amountCollateral) {
         _burnDsc(_amountDscToBurn, msg.sender, msg.sender);
         _redeemCollateral(msg.sender, msg.sender, _tokenCollateralAddress, _amountCollateral);
         _revertIfHealthFactorIsBrocken(msg.sender);
@@ -367,5 +367,25 @@ contract DscEngine is ReentrancyGuard {
         returns (uint256 totalDscMinted, uint256 collateralValueInUsd)
     {
         return _getAccountInformation(_user);
+    }
+
+    function getHealthFactor(address _user) external view returns (uint256) {
+        return _getHealthFactor(_user);
+    }
+
+    function getCollateralTokenPriceFeed(address token) external view returns (address) {
+        return s_priceFeed[token];
+    }
+
+    function getCollateralTokens() external view returns (address[] memory) {
+        return s_collateralTokens;
+    }
+
+    function getMinHealthFactor() external pure returns (uint256) {
+        return MIN_HEALTH_FACTOR;
+    }
+
+    function getCollateralBalanceOfUser(address user, address token) external view returns (uint256) {
+        return s_collateralDeposited[user][token];
     }
 }
