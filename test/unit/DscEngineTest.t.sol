@@ -31,6 +31,10 @@ contract DscEngineTest is Test {
     uint256 public constant STARTING_USER_BALANCE = 100 ether;
     uint256 public constant AMOUNT_COLLATERAL = 1 ether;
 
+    event CollateralRedeemed(
+        address indexed redeemedFrom, address indexed redeemedTo, address indexed collateralToken, uint256 amount
+    );
+
     function setUp() public {
         deployer = new DeployDsc();
         (dsc, dscEngine, helperConfig) = deployer.run();
@@ -252,8 +256,49 @@ contract DscEngineTest is Test {
         dscEngine.depositCollateral(weth, AMOUNT_COLLATERAL);
         console.log("collateral deposited");
         vm.expectRevert();
-        vm.expectRevert();
         dscEngine.redeemCollateral(weth, AMOUNT_COLLATERAL + 1);
+        vm.stopPrank();
+    }
+
+    function testRevertsIfTransferFails() public {
+        address owner = address(this);
+
+        vm.startPrank(owner);
+        MockFailedTransfer mockDsc = new MockFailedTransfer();
+        tokenAddresses = [address(mockDsc)];
+        priceFeedAddresses = [wethUsdPriceFeed];
+        DscEngine mockDscEngine = new DscEngine(tokenAddresses, priceFeedAddresses, address(mockDsc));
+        mockDsc.transferOwnership(address(dscEngine));
+        mockDsc.mint(user, STARTING_USER_BALANCE);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        ERC20Mock(address(mockDsc)).approve(address(mockDscEngine), AMOUNT_COLLATERAL);
+        mockDscEngine.depositCollateral(address(mockDsc), AMOUNT_COLLATERAL);
+        vm.expectRevert(DscEngine.DscEngine__TransferFailed.selector);
+        mockDscEngine.redeemCollateral(address(mockDsc), AMOUNT_COLLATERAL);
+        vm.stopPrank();
+    }
+
+    function testRevertsIfRedeemAmountIsZero() public collateralDeposited {
+        vm.startPrank(user);
+        vm.expectRevert(DscEngine.DscEngine__NeedsMoreThanZero.selector);
+        dscEngine.redeemCollateral(weth, 0);
+        vm.stopPrank();
+    }
+
+    function testCanRedeemCollateral() public collateralDeposited {
+        vm.startPrank(user);
+        dscEngine.redeemCollateral(weth, AMOUNT_COLLATERAL);
+        uint256 userBalance = ERC20Mock(address(weth)).balanceOf(user);
+        assertEq(STARTING_USER_BALANCE, userBalance);
+    }
+
+    function testEmitCollateralRedeemedWithCorrectArgs() public collateralDeposited {
+        vm.expectEmit(true, true, true, true, address(dscEngine));
+        emit CollateralRedeemed(user, user, weth, AMOUNT_COLLATERAL);
+        vm.startPrank(user);
+        dscEngine.redeemCollateral(weth, AMOUNT_COLLATERAL);
         vm.stopPrank();
     }
 
