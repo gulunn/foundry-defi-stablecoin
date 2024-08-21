@@ -14,5 +14,5 @@ docs/
 .env
 
 # other
-/lib
-/.vscode
+lib/
+.vscode/
