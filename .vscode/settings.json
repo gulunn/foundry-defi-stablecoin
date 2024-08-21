@@ -1,4 +1,5 @@
 {
 	"Codegeex.GenerationPreference": "line by line",
-	"Codegeex.CompletionDelay": 0.5
+	"Codegeex.CompletionDelay": 0.5,
+	"cSpell.enableFiletypes": ["solidity"]
 }
