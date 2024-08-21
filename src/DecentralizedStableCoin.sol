@@ -14,7 +14,7 @@ import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
  * This is the contract meant to be owned by DSCEngine. It is a ERC20 token that can be minted and burned by the
  * DSCEngine smart contract.
  */
-contract DecentrailizedStableCoin is ERC20Burnable, Ownable {
+contract DecentralizedStableCoin is ERC20Burnable, Ownable {
     error DecentrailizedStableCoin__NotZeroAddreses();
     error DecentrailizedStableCoin__AmountLessThanZero();
     error DecentrailizedStableCoin__BurnAmountExceedsBalance();

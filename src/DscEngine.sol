@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import {DecentrailizedStableCoin} from "./DecentrailizedStableCoin.sol";
+import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
@@ -28,7 +28,7 @@ contract DscEngine is ReentrancyGuard {
     //                  State Variables                    //
     /////////////////////////////////////////////////////////
 
-    DecentrailizedStableCoin private immutable i_dsc;
+    DecentralizedStableCoin private immutable i_dsc;
 
     uint256 private constant LIQUIDATION_THRESHOLD = 50;
     uint256 private constant LIQUIDATION_BONUS = 10;
@@ -86,7 +86,7 @@ contract DscEngine is ReentrancyGuard {
             s_priceFeed[_tokenAddresses[i]] = _priceFeedAddresses[i];
             s_collateralTokens.push(_tokenAddresses[i]);
         }
-        i_dsc = DecentrailizedStableCoin(_dscAddress);
+        i_dsc = DecentralizedStableCoin(_dscAddress);
     }
 
     /////////////////////////////////////////////////////////
