@@ -5,6 +5,7 @@ import {DecentralizedStableCoin} from "./DecentralizedStableCoin.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+import {OracleLib} from "./libraries/OracleLib.sol";
 
 contract DscEngine is ReentrancyGuard {
     /////////////////////////////////////////////////////////
@@ -15,14 +16,16 @@ contract DscEngine is ReentrancyGuard {
     error DscEngine__TokenAddressesAndPriceFeedAddressesLengthMismatch();
     error DscEngine__TokenNotAllowed(address tokenAddress);
     error DscEngine__TransferFailed();
-    error DscEnging__BreakHealthFactor(uint256 healthFactorValue);
-    error DscEnging__MintFailed();
-    error DscEngine__Liquidate__HelthFactorOK(uint256 healthFactorValue);
+    error DscEngine__BreakHealthFactor(uint256 healthFactorValue);
+    error DscEngine__MintFailed();
+    error DscEngine__Liquidate__HealthFactorOK(uint256 healthFactorValue);
     error DscEngine_HealthFactorNotImproved();
 
     /////////////////////////////////////////////////////////
     //                       Types                         //
     /////////////////////////////////////////////////////////
+
+    using OracleLib for AggregatorV3Interface;
 
     /////////////////////////////////////////////////////////
     //                  State Variables                    //
@@ -159,7 +162,7 @@ contract DscEngine is ReentrancyGuard {
         // Check if the user being liquidated is actually undercollateralized
         uint256 startingHealthFactor = _getHealthFactor(_userUndercollateralized);
         if (startingHealthFactor > MIN_HEALTH_FACTOR) {
-            revert DscEngine__Liquidate__HelthFactorOK(startingHealthFactor);
+            revert DscEngine__Liquidate__HealthFactorOK(startingHealthFactor);
         }
 
         // Calculate the amount of collateral that will be liquidated, which equals _DscDebtTocover in USD value
@@ -196,7 +199,7 @@ contract DscEngine is ReentrancyGuard {
         _revertIfHealthFactorIsBrocken(msg.sender);
         bool isMinted = i_dsc.mint(msg.sender, _amountDscToMint);
         if (!isMinted) {
-            revert DscEnging__MintFailed();
+            revert DscEngine__MintFailed();
         }
     }
 
@@ -269,7 +272,7 @@ contract DscEngine is ReentrancyGuard {
     function _revertIfHealthFactorIsBrocken(address _user) internal view {
         uint256 userHealthFactor = _getHealthFactor(_user);
         if (userHealthFactor < MIN_HEALTH_FACTOR) {
-            revert DscEnging__BreakHealthFactor(userHealthFactor);
+            revert DscEngine__BreakHealthFactor(userHealthFactor);
         }
     }
 
@@ -311,7 +314,7 @@ contract DscEngine is ReentrancyGuard {
     function _getUsdValue(address _tokenAddress, uint256 _amount) private view returns (uint256) {
         AggregatorV3Interface priceFeed = AggregatorV3Interface(s_priceFeed[_tokenAddress]);
         // Returned price has 8 decimal places
-        (, int256 price,,,) = priceFeed.latestRoundData();
+        (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
         // Return the price of WEI (1 ETH = 1e18 WEI), so adding 10 more decimal places
         return (uint256(price) * ADDITIONAL_FEED_PRECISION * _amount) / PRECISION;
     }
@@ -356,7 +359,7 @@ contract DscEngine is ReentrancyGuard {
         if (address(priceFeed) == address(0)) {
             revert DscEngine__TokenNotAllowed(_tokenAddress);
         }
-        (, int256 price,,,) = priceFeed.latestRoundData();
+        (, int256 price,,,) = priceFeed.staleCheckLatestRoundData();
 
         return (_usdValueInWei * PRECISION) / (uint256(price) * ADDITIONAL_FEED_PRECISION);
     }

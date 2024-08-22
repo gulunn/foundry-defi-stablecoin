@@ -144,14 +144,14 @@ contract DscEngineTest is Test {
     //          depositCollateralAndMintDsc Tests          //
     /////////////////////////////////////////////////////////
 
-    function testRevertsIfMintDscBreaksHelthFactor() public {
+    function testRevertsIfMintDscBreaksHealthFactor() public {
         uint256 collateralValuedInUsd = dscEngine.getUsdValue(weth, AMOUNT_COLLATERAL);
         amountToMint = collateralValuedInUsd; // This amountToMint should break the health factor
 
         vm.startPrank(user);
         ERC20Mock(weth).approve(address(dscEngine), AMOUNT_COLLATERAL);
         uint256 expectedHealthFactor = dscEngine.calculateHealthFactor(amountToMint, collateralValuedInUsd);
-        vm.expectRevert(abi.encodeWithSelector(DscEngine.DscEnging__BreakHealthFactor.selector, expectedHealthFactor));
+        vm.expectRevert(abi.encodeWithSelector(DscEngine.DscEngine__BreakHealthFactor.selector, expectedHealthFactor));
         dscEngine.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, amountToMint);
         vm.stopPrank();
     }
@@ -186,7 +186,7 @@ contract DscEngineTest is Test {
 
         vm.startPrank(user);
         ERC20Mock(weth).approve(address(mockDscEngine), AMOUNT_COLLATERAL);
-        vm.expectRevert(DscEngine.DscEnging__MintFailed.selector);
+        vm.expectRevert(DscEngine.DscEngine__MintFailed.selector);
         mockDscEngine.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, amountToMint);
         vm.stopPrank();
     }
@@ -208,7 +208,7 @@ contract DscEngineTest is Test {
 
         vm.startPrank(user);
         ERC20Mock(weth).approve(address(dscEngine), AMOUNT_COLLATERAL);
-        vm.expectRevert(abi.encodeWithSelector(DscEngine.DscEnging__BreakHealthFactor.selector, expectedHealthFactor));
+        vm.expectRevert(abi.encodeWithSelector(DscEngine.DscEngine__BreakHealthFactor.selector, expectedHealthFactor));
         dscEngine.depositCollateralAndMintDsc(weth, AMOUNT_COLLATERAL, amountToMint);
         vm.stopPrank();
     }
@@ -391,7 +391,7 @@ contract DscEngineTest is Test {
         uint256 userHealthFactor = dscEngine.getHealthFactor(user);
 
         vm.expectRevert(
-            abi.encodeWithSelector(DscEngine.DscEngine__Liquidate__HelthFactorOK.selector, userHealthFactor)
+            abi.encodeWithSelector(DscEngine.DscEngine__Liquidate__HealthFactorOK.selector, userHealthFactor)
         );
         dscEngine.liquidate(weth, user, amountToMint);
     }
